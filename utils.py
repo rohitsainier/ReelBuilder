@@ -4,17 +4,10 @@ import os
 import random
 import shutil
 
+# add option for start and end date to download profile data
 
-def download_profile(username):
-    """
-    Download the profile of a given username.
 
-    Args:
-        username (str): The username of the profile to be downloaded.
-
-    Returns:
-        None
-    """
+def download_profile(username: str):
     try:
         # Create an instance of the Instaloader class
         loader = instaloader.Instaloader()
@@ -93,9 +86,9 @@ def create_final_video(video_clips, output_path, enableAudio: bool = True, audio
         final_clip = mp.concatenate_videoclips(video_clips, method="compose")
         # final_clip = final_clip.resize((final_clip.w, final_clip.h))
         print("Video clips concatenated successfully")
-
+        print(enableAudio, audioPath)
         # Add music to the video
-        if enableAudio and audioPath != "":
+        if enableAudio and audioPath != None and audioPath != "":
             final_clip = addMusicToVideo(final_clip, audio=audioPath)
             print("Music added to the video")
         else:
@@ -161,3 +154,14 @@ def createVideo(source: str, destination: str, fps: int = 24, enableAudio: bool 
         final_clip.write_videofile(destination, audio=enableAudio, fps=fps)
     except Exception as e:
         print(f"Error creating local video: {e}")
+
+# add subtitles to video
+    def addSubtitlesToVideo(videoPath: str, subtitle: str):
+        try:
+            clip = mp.VideoFileClip(videoPath)
+            subtitle_clip = mp.TextClip(
+                subtitle, fontsize=20, color='white')
+            final_clip = mp.CompositeVideoClip([clip, subtitle_clip])
+            final_clip.write_videofile("output.mp4")
+        except Exception as e:
+            print(f"Error adding subtitles to video: {e}")
