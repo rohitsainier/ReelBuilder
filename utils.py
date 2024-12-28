@@ -1,167 +1,196 @@
-import moviepy.editor as mp
 import instaloader
 import os
-import random
 import shutil
+import logging
+from typing import Optional
+from pathlib import Path
+from typing import Union
 
-# add option for start and end date to download profile data
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('instagram_downloader.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+class InstagramDownloaderError(Exception):
+    """Custom exception class for Instagram downloader errors."""
+    pass
+
+
+def validate_username(username: str) -> bool:
+    """
+    Validate Instagram username format.
+
+    Args:
+        username (str): Instagram username to validate.
+
+    Returns:
+        bool: True if username is valid, False otherwise.
+    """
+    if not username or not isinstance(username, str):
+        return False
+    # Basic Instagram username validation (30 characters max, alphanumeric, underscores and periods)
+    return len(username) <= 30 and all(c.isalnum() or c in ['_', '.'] for c in username)
+
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('instagram_downloader.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 def download_profile(username: str):
+    """
+    Download all posts (photos and videos) from an Instagram profile.
+
+    Args:
+        username (str): Instagram username to download.
+    """
     try:
+        logger.info(f"Starting download for profile: {username}")
+
         # Create an instance of the Instaloader class
         loader = instaloader.Instaloader()
+
         # Load the profile with the given username
         profile = instaloader.Profile.from_username(loader.context, username)
+
         # Disable saving metadata and downloading video thumbnails
         loader.save_metadata = False
         loader.download_video_thumbnails = False
+
         # Download all posts (photos and videos) from the profile
         loader.download_profile(profile, profile_pic_only=False)
+
+        logger.info(f"Successfully downloaded profile: {username}")
+
     except Exception as e:
-        print(f"Error downloading profile: {e}")
+        logger.error(f"Error downloading profile '{username}': {str(e)}")
+        raise
 
 
-def organize_files(username):
+def organize_files(username: str):
+    """
+    Organize downloaded files into 'images' and 'videos' folders.
+
+    Args:
+        username (str): Username whose files to organize.
+    """
     try:
+        logger.info(f"Organizing files in: {username}")
+
         # Create 'images' and 'videos' folders if they don't exist
         for folder_name in ['images', 'videos']:
             folder_path = os.path.join(username, folder_name)
             if not os.path.exists(folder_path):
                 os.makedirs(folder_path)
+                logger.info(f"Created directory: {folder_path}")
 
-    # Move photos to the 'images' folder and videos to the 'videos' folder
+        # Log files before organization
+        files_before = os.listdir(username)
+        logger.info(f"Files found before organization: {len(files_before)}")
+
+        # Move photos to the 'images' folder and videos to the 'videos' folder
+        image_count = 0
+        video_count = 0
+
         for filename in os.listdir(username):
-            if filename.endswith((".jpg", ".png")):
-                os.rename(os.path.join(username, filename),
-                          os.path.join(username, 'images', filename))
-            elif filename.endswith(".mp4"):
-                os.rename(os.path.join(username, filename),
-                          os.path.join(username, 'videos', filename))
+            source_path = os.path.join(username, filename)
+
+            # Skip if it's a directory
+            if os.path.isdir(source_path):
+                continue
+
+            try:
+                if filename.endswith((".jpg", ".png")):
+                    target_path = os.path.join(username, 'images', filename)
+                    os.rename(source_path, target_path)
+                    image_count += 1
+                    logger.debug(f"Moved image: {filename}")
+                elif filename.endswith(".mp4"):
+                    target_path = os.path.join(username, 'videos', filename)
+                    os.rename(source_path, target_path)
+                    video_count += 1
+                    logger.debug(f"Moved video: {filename}")
+            except Exception as e:
+                logger.warning(f"Failed to move file {filename}: {e}")
+
+        logger.info(f"Organized {image_count} images and {video_count} videos")
+
     except Exception as e:
-        print(f"Error organizing files: {e}")
+        logger.error(f"Error organizing files: {str(e)}")
+        raise
 
 
-def create_video_clips(username, skipPhotos: bool = False, skipVideos: bool = False):
-    try:
-        # Create a list to store the video clips
-        video_clips = []
+def cleanup(username: str):
+    """
+    Clean up the downloaded and processed files.
 
-        # Read the images from the 'images' folder
-        if not skipPhotos:
-            image_folder = os.path.join(username, 'images')
-            for filename in os.listdir(image_folder):
-                path = os.path.join(image_folder, filename)
-                clip = mp.ImageClip(path, duration=random.uniform(2, 3))
-                # clip = clip.resize((target_width, target_height))
-                video_clips.append(clip)
-
-        # Read the videos from the 'videos' folder
-        if not skipVideos:
-            video_folder = os.path.join(username, 'videos')
-            for filename in os.listdir(video_folder):
-                path = os.path.join(video_folder, filename)
-                video_duration = mp.VideoFileClip(path).duration
-                if video_duration > 10:
-                    clip = mp.VideoFileClip(path).subclip(
-                        0, random.uniform(5, 10))
-                else:
-                    clip = mp.VideoFileClip(path)
-                    # clip = clip.resize((target_width, target_height))
-                video_clips.append(clip)
-
-        return video_clips
-    except Exception as e:
-        print(f"Error creating video clips: {e}")
-        return []
-
-
-def create_final_video(video_clips, output_path, enableAudio: bool = True, audioPath: str = ""):
-    try:
-        # Shuffle the video clips randomly
-        random.shuffle(video_clips)
-        print("Video clips shuffled successfully")
-
-        # Concatenate the video clips into a final video
-        final_clip = mp.concatenate_videoclips(video_clips, method="compose")
-        # final_clip = final_clip.resize((final_clip.w, final_clip.h))
-        print("Video clips concatenated successfully")
-        print(enableAudio, audioPath)
-        # Add music to the video
-        if enableAudio and audioPath != None and audioPath != "":
-            final_clip = addMusicToVideo(final_clip, audio=audioPath)
-            print("Music added to the video")
-        else:
-            print("No music added to the video")
-
-        # Write the final video to a file
-        final_clip.write_videofile(output_path, audio=enableAudio, fps=24)
-        print(f"Final video written to {output_path}")
-
-        # Return the final video
-        return final_clip
-    except Exception as e:
-        print(f"Error creating final video: {e}")
-
-
-def cleanup(username):
+    Args:
+        username (str): Username whose files to clean up.
+    """
     try:
         folder = os.path.join(os.getcwd(), username)
         if os.path.exists(folder):
-            shutil.rmtree(folder)
-            print(f"Folder {folder} has been removed")
-
+            # Only remove files that aren't in images or videos folders
+            for item in os.listdir(folder):
+                item_path = os.path.join(folder, item)
+                if item not in ['images', 'videos'] and os.path.exists(item_path):
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                    elif os.path.isdir(item_path):
+                        os.rmdir(item_path)
+            logger.info(f"Cleanup completed successfully")
     except Exception as e:
-        print(f"Error cleaning up: {e}")
+        logger.error(f"Error during cleanup: {str(e)}")
+        raise
 
 
-def addMusicToVideo(clip, audio: str = "music.mp3"):
+def main(username: str, output_dir: Optional[Path] = None, keep_media: bool = True):
+    """
+    Main function to coordinate the download, organization, and cleanup process.
+
+    Args:
+        username (str): Instagram username to download.
+        output_dir (Path, optional): Custom output directory.
+        keep_media (bool): If True, preserve media files after cleanup.
+    """
     try:
-        music = mp.AudioFileClip(audio)
-        # Set accoring to clip duration
-        if clip.duration < music.duration:
-            music = music.subclip(0, clip.duration)
-        else:
-            music = music.subclip(0, music.duration)
-        return clip.set_audio(music)
+        profile_dir = download_profile(username, output_dir)
+        stats = organize_files(profile_dir)
+        cleanup(profile_dir, keep_media)
+
+        logger.info(f"Process completed successfully for {username}")
+        logger.info(
+            f"Downloaded and organized {stats['images']} images and {stats['videos']} videos")
+
     except Exception as e:
-        print(f"Error adding music to video: {e}")
+        logger.error(f"Process failed: {str(e)}")
+        raise
 
-# Create single video from images folder or videos folder
 
+if __name__ == "__main__":
+    import argparse
 
-def createVideo(source: str, destination: str, fps: int = 24, enableAudio: bool = True, audioPath: str = "music.mp3", mix: bool = False):
-    clipsArray = []
-    try:
-        dataFolder = os.path.join(source)
-        for filename in os.listdir(dataFolder):
-            if filename.endswith((".jpg", ".png")):
-                path = os.path.join(dataFolder, filename)
-                clip = mp.ImageClip(path, duration=random.uniform(2, 3))
-                clipsArray.append(clip)
-            elif filename.endswith(".mp4"):
-                path = os.path.join(dataFolder, filename)
-                clip = mp.VideoFileClip(path)
-                clipsArray.append(clip)
+    parser = argparse.ArgumentParser(
+        description="Download and organize Instagram profile content")
+    parser.add_argument("username", help="Instagram username to download")
+    parser.add_argument("--output-dir", type=Path,
+                        help="Custom output directory")
+    parser.add_argument("--keep-media", action="store_true",
+                        help="Keep media files after cleanup")
 
-        # Shuffle the video clips randomly
-        if mix:
-            random.shuffle(clipsArray)
-
-        final_clip = mp.concatenate_videoclips(clipsArray, method="compose")
-        if enableAudio:
-            final_clip = addMusicToVideo(final_clip, audio=audioPath)
-        final_clip.write_videofile(destination, audio=enableAudio, fps=fps)
-    except Exception as e:
-        print(f"Error creating local video: {e}")
-
-# add subtitles to video
-    def addSubtitlesToVideo(videoPath: str, subtitle: str):
-        try:
-            clip = mp.VideoFileClip(videoPath)
-            subtitle_clip = mp.TextClip(
-                subtitle, fontsize=20, color='white')
-            final_clip = mp.CompositeVideoClip([clip, subtitle_clip])
-            final_clip.write_videofile("output.mp4")
-        except Exception as e:
-            print(f"Error adding subtitles to video: {e}")
+    args = parser.parse_args()
+    main(args.username, args.output_dir, args.keep_media)
